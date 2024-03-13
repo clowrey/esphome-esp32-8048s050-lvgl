@@ -1,0 +1,273 @@
+esphome:
+  name: esp32-8048s050-lvgl
+  friendly_name: esp32-8048s050-lvgl
+  platformio_options:
+    build_flags: "-DBOARD_HAS_PSRAM"
+    board_build.esp-idf.memory_type: qio_opi
+    board_build.flash_mode: dio
+    board_upload.maximum_ram_size: 524288
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 16MB
+  partitions: "default_16MB.csv"
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: y
+      CONFIG_ESP32S3_DATA_CACHE_64KB: y
+      CONFIG_SPIRAM_FETCH_INSTRUCTIONS: y
+      CONFIG_SPIRAM_RODATA: y
+
+psram:
+  mode: octal
+  speed: 80MHz 
+
+# Enable logging
+logger:
+
+external_components:
+ - source: github://clydebarrow/esphome@lvgl
+   components: [ image, lvgl ] 
+    
+sensor:
+  - platform: uptime
+    # name: Uptime Sensor
+    internal: True
+    id: uptime_sensor
+    update_interval: 1s
+    on_raw_value:
+      then:
+        - text_sensor.template.publish:
+            id: uptime_human
+            state: !lambda |-
+              int seconds = round(id(uptime_sensor).raw_state);
+              int days = seconds / (24 * 3600);
+              seconds = seconds % (24 * 3600);
+              int hours = seconds / 3600;
+              seconds = seconds % 3600;
+              int minutes = seconds /  60;
+              seconds = seconds % 60;
+              return (
+                ("Uptime ") +
+                (days ? to_string(days) + "d " : "") +
+                (hours ? to_string(hours) + "h " : "") +
+                (minutes ? to_string(minutes) + "m " : "") +
+                (to_string(seconds) + "s")
+              ).c_str();
+
+  - platform: wifi_signal
+    # name: "WiFi Signal Sensor"
+    internal: True
+    id: wifi_signal_sensor
+    update_interval: 5s
+
+  - platform: homeassistant
+    name: "Processor Use"
+    entity_id: sensor.processor_use
+    id: ha_processor_use    
+
+# Define a PWM output on the ESP32
+output:
+  - platform: ledc
+    pin: 2
+    frequency: 1220
+    id: gpio_backlight_pwm
+
+light:
+  - platform: monochromatic # Define a monochromatic, dimmable light for the backlight
+    output: gpio_backlight_pwm
+    name: ${devicename} Display Backlight
+    id: back_light
+    restore_mode: ALWAYS_ON
+
+binary_sensor:
+  - platform: status
+    name: "Node Status"
+    id: system_status
+
+text_sensor:
+  - platform: template
+    # name: Uptime Human Readable
+    id: uptime_human
+    icon: mdi:clock-start
+    internal: True
+
+  - platform: wifi_info
+    ip_address:
+      # name: ESP IP Address
+      id: ip_address
+    
+display:
+  - platform: rpi_dpi_rgb
+    id: main_display
+    color_order: BGR
+    invert_colors: True
+    update_interval: never
+    auto_clear_enabled: false # takes 2.8 seconds to clear the display
+    dimensions:
+      width: 800
+      height: 480
+    de_pin: 40
+    hsync_pin: 39
+    vsync_pin: 41
+    pclk_pin: 42
+    pclk_frequency: 24MHz
+    data_pins:
+      red:
+        - 45        #r1
+        - 48        #r2
+        - 47        #r3
+        - 21        #r4
+        - 14        #r5
+      green:
+        - 5         #g0
+        - 6         #g1
+        - 7         #g2
+        - 15        #g3
+        - 16        #g4
+        - 4         #g5
+      blue:
+        - 8         #b1
+        - 3         #b2
+        - 46        #b3
+        - 9         #b4
+        - 1         #b5
+
+
+time:
+  - platform: homeassistant
+    id: time_comp
+    on_time_sync:
+      then:
+        - script.execute: time_update
+
+script:
+  - id: time_update
+    then:
+      - lvgl.indicator.line.update:
+          id: minute_hand
+          value: !lambda |-
+            return id(time_comp).now().minute;
+      - lvgl.indicator.line.update:
+          id: hour_hand
+          value: !lambda |-
+            auto now = id(time_comp).now();
+            return std::fmod(now.hour, 12) * 60 + now.minute;
+      - lvgl.label.update:
+          id: date_label
+          text: !lambda |-
+            static const char * const mon_names[] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+            static char date_buf[8];
+            auto now = id(time_comp).now();
+            snprintf(date_buf, sizeof(date_buf), "%s %2d", mon_names[now.month-1], now.day_of_month);
+            return date_buf;
+      - lvgl.label.update:
+          id: day_label
+          text: !lambda |-
+            static const char * const day_names[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
+            return day_names[id(time_comp).now().day_of_week-1];
+interval:
+  - interval: 1min
+    then:
+      - script.execute: time_update
+
+lvgl:
+  log_level: INFO
+  color_depth: 16
+  bg_color: 0x0F0F0F
+  text_font: MONTSERRAT_18
+  align: center
+  style_definitions:
+    - id: date_style
+      text_font: MONTSERRAT_32
+      align: center
+      text_color: 0x000000
+      bg_opa: cover
+      radius: 4
+      pad_all: 2
+  widgets:
+    - obj: # Clock container
+        height: size_content
+        width: size_content
+        widgets:
+          - meter: # Gradient color  arc
+              height: 400
+              width: 400
+              align: center
+              bg_color: 0
+              scales:
+                angle_range: 360
+                rotation: 255
+                range_from: 0
+                range_to: 12
+                ticks:
+                  width: 35
+                  count: 13
+                  length: 12
+                indicators:
+                  - ticks:
+                      local: true
+                      start_value: 0
+                      end_value: 12
+                      color_start: 0xFF0000
+                      color_end: 0x0000FF
+          - meter:
+              height: 400
+              width: 400
+              align: center
+                    
+              bg_opa: TRANSP
+              text_color: 0xFFFFFF
+              scales:
+                - ticks:
+                    width: 2
+                    count: 61
+                    length: 20
+                    color: 0xFFFFFF
+                  range_from: 0
+                  range_to: 60
+                  angle_range: 360
+                  rotation: 270
+                  indicators:
+                    - line:
+                        id: minute_hand
+                        width: 5
+                        color: 0xE0E0E0
+                        r_mod: -1
+
+                - 
+                  angle_range: 330
+                  rotation: 300
+                  range_from: 1
+                  range_to: 12
+                  ticks:
+                    width: 1
+                    count: 12
+                    length: 1
+                    major:
+                      stride: 1
+                      width: 8
+                      length: 8
+                      color: 0xC0C0C0
+                      label_gap: 6
+
+                - angle_range: 360
+                  rotation: 270
+                  range_from: 0
+                  range_to: 720
+                  indicators:
+                    - line:
+                        id: hour_hand
+                        width: 6
+                        color: 0xA0A0A0
+                        r_mod: -20
+          - label:
+              styles: date_style
+              id: day_label
+              y: -40
+          - label:
+              id: date_label
+              styles: date_style
+              y: +40
