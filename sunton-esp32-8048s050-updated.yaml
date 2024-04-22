@@ -1,6 +1,11 @@
 esphome:
   name: sunton-esp32-8048s050
   friendly_name: sunton-esp32-8048s050
+  platformio_options:
+  #  build_flags: "-DBOARD_HAS_PSRAM"
+  #  board_build.esp-idf.memory_type: qio_opi
+    board_build.flash_mode: dio #still necessary or will not boot after serial flashing - still works with wifi update without this so you wont notice on wifi
+  #  board_upload.maximum_ram_size: 524288
     
 esp32:
   board: esp32-s3-devkitc-1
