@@ -1,5 +1,6 @@
 ESPhome example config for the Sunton ESP32-8048S050 with 800x480 IPS LCD + capacitive touchscreen
 
+While this is still under active development it is best to reference a previous working commit like this:
 ```yaml
 external_components:
   - source:
