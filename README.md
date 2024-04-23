@@ -1,5 +1,14 @@
 ESPhome example config for the Sunton ESP32-8048S050 with 800x480 IPS LCD + capacitive touchscreen
 
+```yaml
+external_components:
+  - source:
+      type: git
+      url: https://github.com/clydebarrow/esphome
+      ref: fd15094c0860df23d532881df36cfd16c7da1091 #previous commit - wont be needed in the future
+    components: [ lvgl ]
+```
+
 Sunton display general info https://github.com/rzeldent/platformio-espressif32-sunton
 ![sunton-esp32-8048s050](https://github.com/clowrey/esphome-esp32-8048s050-lvgl/assets/6935928/d6f8c34f-c5f3-4a33-b4c1-738e710de04a)
 ```yaml
